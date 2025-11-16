@@ -1,57 +1,71 @@
 import type { AnalysisData, Pipe, PipeSize, GeolocationState } from '../types';
 
-// Access the globally loaded library instead of using an import
-const { GoogleGenAI, Type } = (window as any).genai;
+// Lazily initialized AI client. Will be created on the first API call.
+let ai: any = null;
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-
-const pipeSchema = {
-  type: Type.OBJECT,
-  properties: {
-    pipes: {
-      type: Type.ARRAY,
-      description: "An array of all detected pipe objects in the image.",
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          size: {
-            type: Type.STRING,
-            enum: ['Small', 'Medium', 'Large', 'Unknown'],
-            description: "The classified size of the pipe."
-          },
-          boundingBox: {
-            type: Type.OBJECT,
-            description: "The bounding box coordinates as percentages of image dimensions.",
-            properties: {
-              x: { type: Type.NUMBER, description: "Percentage from the left edge." },
-              y: { type: Type.NUMBER, description: "Percentage from the top edge." },
-              width: { type: Type.NUMBER, description: "Width as a percentage." },
-              height: { type: Type.NUMBER, description: "Height as a percentage." },
-            },
-            required: ['x', 'y', 'width', 'height']
-          },
-          confidence: {
-            type: Type.NUMBER,
-            description: 'A value between 0.0 and 1.0 representing the model\'s confidence in this specific detection.'
-          }
-        },
-        required: ['size', 'boundingBox', 'confidence']
-      }
-    },
-    overallConfidence: {
-      type: Type.NUMBER,
-      description: 'A value between 0.0 and 1.0 representing the overall confidence in the accuracy of the entire analysis.'
-    },
-    notes: {
-      type: Type.STRING,
-      description: 'A brief, human-readable summary of the findings, including total counts for each size.'
+const getAiClient = () => {
+  if (!ai) {
+    const genai = (window as any).genai;
+    if (!genai || !genai.GoogleGenAI) {
+      // This error will be caught by the calling function and shown to the user.
+      throw new Error("Gemini AI library is not available. Please check your internet connection.");
     }
-  },
-  required: ['pipes', 'overallConfidence', 'notes']
-};
+    const { GoogleGenAI } = genai;
+    ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  }
+  return ai;
+}
 
 export const analyzeImage = async (imageDataUrl: string, location: GeolocationState): Promise<AnalysisData> => {
   try {
+    const aiInstance = getAiClient();
+    const { Type } = (window as any).genai;
+
+    const pipeSchema = {
+      type: Type.OBJECT,
+      properties: {
+        pipes: {
+          type: Type.ARRAY,
+          description: "An array of all detected pipe objects in the image.",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              size: {
+                type: Type.STRING,
+                enum: ['Small', 'Medium', 'Large', 'Unknown'],
+                description: "The classified size of the pipe."
+              },
+              boundingBox: {
+                type: Type.OBJECT,
+                description: "The bounding box coordinates as percentages of image dimensions.",
+                properties: {
+                  x: { type: Type.NUMBER, description: "Percentage from the left edge." },
+                  y: { type: Type.NUMBER, description: "Percentage from the top edge." },
+                  width: { type: Type.NUMBER, description: "Width as a percentage." },
+                  height: { type: Type.NUMBER, description: "Height as a percentage." },
+                },
+                required: ['x', 'y', 'width', 'height']
+              },
+              confidence: {
+                type: Type.NUMBER,
+                description: 'A value between 0.0 and 1.0 representing the model\'s confidence in this specific detection.'
+              }
+            },
+            required: ['size', 'boundingBox', 'confidence']
+          }
+        },
+        overallConfidence: {
+          type: Type.NUMBER,
+          description: 'A value between 0.0 and 1.0 representing the overall confidence in the accuracy of the entire analysis.'
+        },
+        notes: {
+          type: Type.STRING,
+          description: 'A brief, human-readable summary of the findings, including total counts for each size.'
+        }
+      },
+      required: ['pipes', 'overallConfidence', 'notes']
+    };
+    
     const base64Data = imageDataUrl.split(',')[1];
     if (!base64Data) {
       throw new Error("Invalid image data URL.");
@@ -78,7 +92,7 @@ export const analyzeImage = async (imageDataUrl: string, location: GeolocationSt
       Return the data ONLY in the structured JSON format defined by the schema. Do not include any other text or markdown formatting.`,
     };
 
-    const response = await ai.models.generateContent({
+    const response = await aiInstance.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: { parts: [imagePart, textPart] },
       config: {

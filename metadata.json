@@ -1,0 +1,8 @@
+{
+  "name": "Pipe Counter",
+  "description": "An AI-powered application to accurately count and classify pipes from a captured image, providing detailed analysis reports including visual confirmation, counts by size, and location data.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera"
+  ]
+}
